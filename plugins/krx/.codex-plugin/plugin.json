@@ -1,0 +1,33 @@
+{
+  "name": "krx",
+  "version": "0.1.0",
+  "description": "Read the Korea Exchange (KRX) Open API from the command line, powered by the krx-openapi CLI",
+  "author": {
+    "name": "seokhoonj",
+    "url": "https://github.com/seokhoonj"
+  },
+  "homepage": "https://github.com/seokhoonj/krx-openapi",
+  "repository": "https://github.com/seokhoonj/krx-openapi",
+  "license": "MIT",
+  "keywords": [
+    "krx",
+    "korea exchange",
+    "korea",
+    "market data",
+    "stock"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "krx",
+    "shortDescription": "Read the Korea Exchange (KRX) Open API",
+    "longDescription": "Browse the KRX Open API's services and field schemas offline, or fetch a day's market data (indices, stocks, ETP, bonds, derivatives, commodities, ESG) via the krx-openapi CLI. The fetch needs a free KRX API key in KRX_API_KEY, with each service applied for on the KRX account.",
+    "developerName": "seokhoonj",
+    "category": "Productivity",
+    "capabilities": [],
+    "defaultPrompt": [
+      "List the KRX Open API services",
+      "Show the fields of the KOSPI daily-trade endpoint",
+      "Fetch the KOSPI index series for 2020-04-14"
+    ]
+  }
+}

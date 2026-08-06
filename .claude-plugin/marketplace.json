@@ -1,0 +1,27 @@
+{
+  "name": "krx-openapi",
+  "owner": {
+    "name": "seokhoonj"
+  },
+  "description": "Read the Korea Exchange (KRX) Open API",
+  "plugins": [
+    {
+      "name": "krx",
+      "displayName": "krx",
+      "source": "./plugins/krx",
+      "description": "Read the Korea Exchange (KRX) Open API",
+      "author": {
+        "name": "seokhoonj"
+      },
+      "homepage": "https://github.com/seokhoonj/krx-openapi",
+      "category": "Productivity",
+      "keywords": [
+        "krx",
+        "korea exchange",
+        "korea",
+        "market data",
+        "stock"
+      ]
+    }
+  ]
+}

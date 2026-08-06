@@ -1,0 +1,22 @@
+name: check
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+  pull_request:
+
+# A newer push to the same branch or PR makes the older run's result obsolete,
+# so cancel it rather than let both run to completion.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+# The check only reads the code to lint, type, and test it -- it never writes to the
+# repo -- so it runs with the least privilege that still allows a checkout.
+permissions:
+  contents: read
+
+jobs:
+  check:
+    uses: ./.github/workflows/reusable-check.yml

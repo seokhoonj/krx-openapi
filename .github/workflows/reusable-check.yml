@@ -1,0 +1,59 @@
+name: reusable check
+
+# The full check -- tests, lint, types, and the zero-dependency assertion -- factored
+# into one reusable job so both `check.yml` (on push / PR) and any release gate run
+# the *identical* thing.
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        # The floor and the current release. requires-python is >=3.11, so 3.11 is
+        # the version that claim has to hold on; the upper end tracks current CPython.
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+
+      - name: Install
+        run: |
+          uv venv --python ${{ matrix.python-version }}
+          uv pip install -e ".[dev]"
+          .venv/bin/python -c "import sys; print('testing on', sys.version)"
+
+      - name: Test
+        run: .venv/bin/pytest -q
+
+      - name: Lint
+        run: .venv/bin/ruff check src tests
+
+      - name: Types
+        run: .venv/bin/mypy
+
+      - name: Confirm the package still has no runtime dependencies
+        # The zero-dependency claim is in the README and pyproject; a claim nothing
+        # checks quietly stops being true. Installed into a bare environment, the
+        # package must import with nothing else present.
+        run: |
+          uv venv /tmp/bare --python ${{ matrix.python-version }}
+          uv pip install --python /tmp/bare/bin/python .
+          /tmp/bare/bin/python -c "
+          import importlib.metadata as md
+          requires = md.requires('krx-openapi') or []
+          runtime = [r for r in requires if 'extra ==' not in r]
+          assert not runtime, f'runtime dependencies appeared: {runtime}'
+          import krx_openapi
+          print('krx_openapi', krx_openapi.__version__, 'imports with no third-party packages')
+          "

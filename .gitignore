@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.env
+
+# uv
+uv.lock
+
+# Tooling caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Local scratch (never tracked)
+dev/
+refs/
+
+# AI coding agents
+CLAUDE.md
+.claude/
+AGENTS.md
+AGENT.md
+.codex/
+GEMINI.md
+.gemini/

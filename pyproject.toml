@@ -1,0 +1,83 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "krx-openapi"
+version = "0.1.0"
+description = "Read the Korea Exchange (KRX) Open API: indices, stocks, ETP, bonds, derivatives, commodities, ESG."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Seokhoon Joo", email = "seokhoonj@gmail.com" }]
+keywords = ["krx", "korea exchange", "한국거래소", "market data", "korea", "finance"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Financial and Insurance Industry",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Office/Business :: Financial",
+]
+# No runtime dependencies on purpose: urllib and json from the standard library
+# carry the whole client. A data client that never breaks on a third party's release
+# is worth more than any convenience they would add. Rows come back as ``list[dict]``,
+# which ``pandas.DataFrame`` / ``polars.DataFrame`` accept directly, so no DataFrame
+# library is bundled or wrapped.
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+    "mypy>=1.11",
+    "pytest>=8.0",
+    "ruff>=0.6",
+]
+
+[project.urls]
+Homepage = "https://github.com/seokhoonj/krx-openapi"
+Repository = "https://github.com/seokhoonj/krx-openapi"
+Issues = "https://github.com/seokhoonj/krx-openapi/issues"
+
+[project.scripts]
+krx = "krx_openapi.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/krx_openapi"]
+
+[tool.ruff]
+# 100, not 88: the endpoint registry aligns its columns (category, api_id, schema,
+# Korean name, start date) on one line each, which reads better whole than wrapped.
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.ruff.lint.per-file-ignores]
+# The endpoint registry is an aligned data table of Korean service names; a few rows
+# run past the line length and read better whole than wrapped.
+"src/krx_openapi/_endpoint.py" = ["E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.mypy]
+python_version = "3.11"
+files = ["src", "tests"]
+strict = true
+
+# Tests get the real checks but not the annotation ceremony: `-> None` on every test
+# is noise. The package itself is strict without exception -- it is the part with a
+# contract.
+[[tool.mypy.overrides]]
+module = "tests.*"
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+disallow_untyped_calls = false
+disallow_any_generics = false
+check_untyped_defs = true

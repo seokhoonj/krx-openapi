@@ -1,0 +1,19 @@
+{
+  "name": "krx",
+  "displayName": "krx",
+  "description": "Read the Korea Exchange (KRX) Open API from the command line, powered by the krx-openapi CLI",
+  "version": "0.1.0",
+  "author": {
+    "name": "seokhoonj"
+  },
+  "homepage": "https://github.com/seokhoonj/krx-openapi",
+  "repository": "https://github.com/seokhoonj/krx-openapi",
+  "license": "MIT",
+  "keywords": [
+    "krx",
+    "korea exchange",
+    "korea",
+    "market data",
+    "stock"
+  ]
+}
