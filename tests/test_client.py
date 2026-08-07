@@ -7,6 +7,7 @@ accessor asks for.
 import pytest
 
 from krx_openapi import KRX
+from krx_openapi.client import _accepts_market
 
 
 def _recording_krx(monkeypatch):
@@ -57,6 +58,18 @@ def test_stock_futures_rejects_knx_at_runtime():
     # guard (_pick -> ValueError) is what the test asserts.
     with pytest.raises(ValueError):
         KRX(api_key="unused").derivatives.stock_futures("20200414", market="KONEX")  # type: ignore[arg-type]
+
+
+def test_accepts_market_reads_the_method_signature():
+    # The four market-capable accessors, and a few that are not -- derived from the
+    # method signature, so it stays true to the accessor definitions (no key needed).
+    assert _accepts_market("stock", "daily") is True
+    assert _accepts_market("stock", "info") is True
+    assert _accepts_market("derivatives", "stock_futures") is True
+    assert _accepts_market("derivatives", "stock_options") is True
+    assert _accepts_market("index", "kospi") is False
+    assert _accepts_market("bond", "treasury") is False
+    assert _accepts_market("derivatives", "futures") is False
 
 
 def test_repr_never_shows_the_key():

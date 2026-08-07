@@ -38,7 +38,8 @@ PowerShell: `setx KRX_API_KEY "..."`.
 ```python
 from krx_openapi import KRX
 
-krx = KRX()                                     # finds the stored key
+krx = KRX()                                     # finds the stored key (config file, env var)
+# krx = KRX(api_key="your-key")                 # or pass the key in code
 rows = krx.index.kospi("20200414")              # KOSPI index series, one day
 
 krx.stock.daily("20200414", market="KOSPI")     # all KOSPI stocks, one day
@@ -58,7 +59,7 @@ import polars as pl
 pl.DataFrame(rows)
 ```
 
-## 3. Services
+## 3. API
 
 | accessor | services |
 |---|---|
@@ -120,28 +121,31 @@ catalog.fields("index", "kospi")   # the columns this service returns
 
 ## 4. Command line
 
-The command line uses the same names as Python — `krx <group> <method> <date>`
-(e.g. `krx index kospi 20200414` == `krx.index.kospi("20200414")`). Run it as `krx`
-or `python -m krx_openapi`; add `--json` to any command for JSON.
+The command line has three commands: `list`, `fields`, `fetch`. `list` and `fields`
+browse what exists and what columns it returns, offline (no key); `fetch` gets one
+day of data — `krx fetch <group> <method> <date>` (e.g. `krx fetch index kospi
+20200414` == `krx.index.kospi("20200414")`). Run it as `krx` or `python -m
+krx_openapi`; add `--json` to any command for JSON.
 
 ```bash
-# fetch data (the same words as krx.index.kospi("20200414"); needs KRX_API_KEY)
-krx index kospi 20200414
-krx stock daily 20200414 --market KOSDAQ
-krx bond treasury 20200414
-
 # what exists / what columns it returns (offline, no key)
-krx list                # every group and its methods
-krx list stock          # one group
-krx fields index kospi  # the columns this service returns
+krx list                      # every group and its methods
+krx list stock                # one group
+krx fields index kospi        # the columns this service returns
+
+# fetch data (needs KRX_API_KEY)
+krx fetch index kospi 20200414
+krx fetch stock daily 20200414 --market KOSDAQ
+krx fetch bond treasury 20200414
 ```
 
 ## 5. AI coding agents
 
 - This repo doubles as a plugin marketplace for Claude Code and Codex.
-- It ships two skills, `catalog` and `fetch`, each calling the `krx` command
-  (catalog = `krx list` / `krx fields`, fetch = `krx <group> <method> <date>`).
-- Install the package first (catalog works without a key; fetch needs an API key).
+- It ships three skills, `list`, `fields`, and `fetch`, each calling the `krx`
+  command of the same name (`krx list`, `krx fields <group> <name>`, `krx fetch
+  <group> <name> <date>`).
+- Install the package first (`list` and `fields` work without a key; `fetch` needs an API key).
 
 ### 5.1 Claude Code
 
@@ -150,8 +154,8 @@ krx fields index kospi  # the columns this service returns
 /plugin install krx@krx-openapi
 ```
 
-Then ask in plain language ("get today's KOSPI stocks", "what KRX services are there"),
-or call a skill directly — `/krx:catalog`, `/krx:fetch index kospi 20200414`.
+Then ask in plain language ("get all KOSPI stock prices", "what KRX services are there"),
+or call a skill directly — `/krx:list`, `/krx:fields index kospi`, `/krx:fetch index kospi 20200414`.
 
 ### 5.2 Codex
 
@@ -166,8 +170,10 @@ To use the skills without installing the plugin, symlink them into each agent's
 skills directory:
 
 ```sh
-ln -s "$PWD/plugins/krx/skills/fetch" ~/.claude/skills/fetch   # Claude Code → /fetch
-ln -s "$PWD/plugins/krx/skills/fetch" ~/.codex/skills/fetch    # Codex → $krx:fetch
+for s in list fields fetch; do
+  ln -s "$PWD/plugins/krx/skills/$s" ~/.claude/skills/$s   # Claude Code → /$s
+  ln -s "$PWD/plugins/krx/skills/$s" ~/.codex/skills/$s    # Codex → $krx:$s
+done
 ```
 
 Claude Code picks it up immediately; Codex needs a restart.

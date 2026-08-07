@@ -119,10 +119,9 @@ SCHEMAS: Mapping[str, tuple[str, ...]] = MappingProxyType({
 
 # The KRX client's accessor tree as data: group -> [(method name, representative
 # api_id)]. It mirrors the KRX / _Surface accessors so the CLI can offer the same
-# readable names (`krx index kospi`) instead of raw api_ids, and drive `list` /
+# readable names (`krx fetch index kospi`) instead of raw api_ids, and drive `list` /
 # `fields` offline. The api_id is only used to look up a field schema, and every
 # market variant of a method shares one schema, so a single representative suffices.
-# (A test keeps this in step with the client.)
 ACCESSORS: Mapping[str, tuple[tuple[str, str], ...]] = MappingProxyType({
     "index": (
         ("krx", "krx_dd_trd"), ("kospi", "kospi_dd_trd"), ("kosdaq", "kosdaq_dd_trd"),
@@ -194,6 +193,6 @@ def endpoints() -> list[KRXEndpoint]:
 
 def schemas() -> dict[str, list[str]]:
     """A mutable copy of the schema-name -> field-list map."""
-    return {name: list(fields) for name, fields in SCHEMAS.items()}
+    return {name: list(field_names) for name, field_names in SCHEMAS.items()}
 
 

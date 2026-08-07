@@ -6,9 +6,8 @@ earliest ``basDd`` for which KRX serves data. ``url`` and ``sample_url`` resolve
 from those -- the wire location lives in exactly one place.
 
 KRX also publishes a keyless *sample* twin of every endpoint: the same shape at a
-fixed sample date, reachable with a public sample key. It is what the test suite
-exercises without a real key; :attr:`KRXEndpoint.sample_url`, :data:`SAMPLE_KEY`,
-and :data:`SAMPLE_DATE` describe it.
+fixed sample date, reachable with a public sample key -- :attr:`KRXEndpoint.sample_url`,
+:data:`SAMPLE_KEY`, and :data:`SAMPLE_DATE` describe it.
 
 ``ENDPOINTS`` is exposed read-only (a ``MappingProxyType``): it is package dispatch
 state that every category accessor reads, so a caller must not be able to mutate it.
@@ -19,6 +18,8 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
+
+from .types import Category
 
 BASE_URL = "https://data-dbg.krx.co.kr/svc/apis"
 SAMPLE_URL = "https://data-dbg.krx.co.kr/svc/sample/apis"
@@ -33,7 +34,7 @@ SAMPLE_DATE = "20200414"
 class KRXEndpoint:
     """One KRX Open API service and where its data and spec live."""
 
-    category: str            # service path code: idx, sto, etp, bon, drv, gen, esg
+    category: Category       # service path code: idx, sto, etp, bon, drv, gen, esg
     api_id: str              # e.g. "krx_dd_trd"
     schema: str = ""         # field-schema name, keys into krx_openapi.catalog
     name_ko: str = ""        # Korean title, e.g. "KRX 시리즈 일별시세정보"

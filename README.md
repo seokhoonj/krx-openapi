@@ -37,7 +37,8 @@ pip install krx-openapi
 ```python
 from krx_openapi import KRX
 
-krx = KRX()                                     # 저장해둔 키를 자동으로 찾습니다
+krx = KRX()                                     # 저장해둔 키를 자동으로 찾습니다 (config 파일·환경변수)
+# krx = KRX(api_key="발급받은-키")              # 또는 키를 코드에 직접 넣기
 rows = krx.index.kospi("20200414")              # KOSPI 시리즈 지수, 하루치
 
 krx.stock.daily("20200414", market="KOSPI")     # KOSPI 전종목 일별매매정보
@@ -57,7 +58,7 @@ import polars as pl
 pl.DataFrame(rows)
 ```
 
-## 3. 서비스
+## 3. API
 
 | 접근자 | 서비스 |
 |---|---|
@@ -119,28 +120,30 @@ catalog.fields("index", "kospi")  # 이 서비스가 돌려주는 필드명 (컬
 
 ## 4. 커맨드라인
 
-명령줄도 파이썬과 **똑같은 이름**을 씁니다 — `krx <그룹> <메서드> <날짜>` (예: `krx
-index kospi 20200414` = `krx.index.kospi("20200414")`). 명령은 `krx` 또는
-`python -m krx_openapi`로 실행하고, 어디에 `--json`을 붙이면 JSON으로 나옵니다.
+명령줄은 세 명령 `list` · `fields` · `fetch`를 씁니다. `list`·`fields`는 오프라인(키
+불필요)으로 뭐가 있고 어떤 컬럼이 오는지 훑고, `fetch`는 하루치 데이터를 가져옵니다 —
+`krx fetch <그룹> <메서드> <날짜>` (예: `krx fetch index kospi 20200414` =
+`krx.index.kospi("20200414")`). 명령은 `krx` 또는 `python -m krx_openapi`로 실행하고,
+어디에 `--json`을 붙이면 JSON으로 나옵니다.
 
 ```bash
-# 데이터 조회 (파이썬 krx.index.kospi("20200414") 와 같은 단어, KRX_API_KEY 필요)
-krx index kospi 20200414
-krx stock daily 20200414 --market KOSDAQ
-krx bond treasury 20200414
-
 # 무슨 서비스가 있나 / 어떤 컬럼이 오나 (오프라인, 키 불필요)
-krx list                # 전체 그룹·메서드
-krx list stock          # 한 그룹만
-krx fields index kospi  # 이 서비스가 돌려주는 컬럼
+krx list                      # 전체 그룹·메서드
+krx list stock                # 한 그룹만
+krx fields index kospi        # 이 서비스가 돌려주는 컬럼
+
+# 데이터 조회 (KRX_API_KEY 필요)
+krx fetch index kospi 20200414
+krx fetch stock daily 20200414 --market KOSDAQ
+krx fetch bond treasury 20200414
 ```
 
 ## 5. AI 코딩 에이전트에서 사용
 
 - 이 저장소는 Claude Code·Codex용 플러그인 마켓플레이스도 겸합니다.
-- `catalog`·`fetch` 스킬을 제공하며, 각각 `krx` 명령을 호출합니다 (catalog =
-  `krx list`/`krx fields`, fetch = `krx <그룹> <이름> <날짜>`).
-- 먼저 위에서 패키지를 설치하세요 (catalog는 키 없이, fetch는 API 키가 필요합니다).
+- `list`·`fields`·`fetch` 스킬을 제공하며, 각각 같은 이름의 `krx` 명령을 호출합니다
+  (`krx list`, `krx fields <그룹> <이름>`, `krx fetch <그룹> <이름> <날짜>`).
+- 먼저 위에서 패키지를 설치하세요 (`list`·`fields`는 키 없이, `fetch`는 API 키가 필요합니다).
 
 ### 5.1 Claude Code
 
@@ -150,7 +153,7 @@ krx fields index kospi  # 이 서비스가 돌려주는 컬럼
 ```
 
 설치 후 평범하게 물어보거나("코스피 전종목 시세 가져와", "무슨 KRX 서비스 있어"), 스킬을
-직접 부르세요 — `/krx:catalog`, `/krx:fetch index kospi 20200414`.
+직접 부르세요 — `/krx:list`, `/krx:fields index kospi`, `/krx:fetch index kospi 20200414`.
 
 ### 5.2 Codex
 
@@ -164,8 +167,10 @@ codex plugin add krx@krx-openapi
 플러그인으로 설치하지 않고 쓰려면, 스킬을 각 에이전트의 스킬 디렉터리에 symlink합니다.
 
 ```sh
-ln -s "$PWD/plugins/krx/skills/fetch" ~/.claude/skills/fetch   # Claude Code → /fetch
-ln -s "$PWD/plugins/krx/skills/fetch" ~/.codex/skills/fetch    # Codex → $krx:fetch
+for s in list fields fetch; do
+  ln -s "$PWD/plugins/krx/skills/$s" ~/.claude/skills/$s   # Claude Code → /$s
+  ln -s "$PWD/plugins/krx/skills/$s" ~/.codex/skills/$s    # Codex → $krx:$s
+done
 ```
 
 Claude Code는 바로 인식하고, Codex는 재시작해야 로딩됩니다.

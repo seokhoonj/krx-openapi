@@ -7,8 +7,8 @@ caller handles differently: a misconfiguration caught before any request
 (:class:`KRXAuthError`), a daily-quota exhaustion (:class:`KRXRateLimitError`), any
 other vendor-reported error inside a well-formed response
 (:class:`KRXResponseError`), and a transport failure that never produced a KRX body
-(:class:`KRXNetworkError`). Invalid *caller input* -- an unknown ``market`` code, an
-unknown ``api_id`` -- raises the standard ``ValueError`` / ``KeyError`` instead, the
+(:class:`KRXNetworkError`). Invalid *caller input* -- an unknown ``market`` code raises
+``ValueError``, an unknown accessor ``group``/``method`` raises ``KeyError`` -- the
 usual signal for a caller mistake rather than a runtime failure.
 
 KRX answers every request with HTTP 200 and marks failure with a non-empty

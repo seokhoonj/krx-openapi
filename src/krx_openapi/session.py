@@ -33,6 +33,28 @@ _RATE_LIMIT_STATUS = 429
 _FORBIDDEN_STATUS = 403
 
 
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """Refuse every redirect instead of following it.
+
+    ``urllib`` follows a 3xx automatically and copies the request headers -- the
+    ``AUTH_KEY`` among them -- onto the new location, so a redirect (in particular an
+    https -> http downgrade) would hand the API key to another host, in cleartext on
+    the downgrade. Refusing turns any redirect into an ``HTTPError``, which
+    :meth:`KRXSession._get` already surfaces as :class:`KRXNetworkError`; the key
+    never leaves the original https host.
+    """
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # type: ignore[no-untyped-def]
+        # The redirect target (newurl) is server-controlled -- keep it out of the error
+        # so nothing it carries can surface through the chained exception.
+        raise urllib.error.HTTPError(req.full_url, code, "redirect refused", headers, fp)
+
+
+# One opener for the whole package: the default global opener follows redirects, so
+# a private opener with the no-redirect handler is what actually closes the leak.
+_OPENER = urllib.request.build_opener(_NoRedirect)
+
+
 class KRXSession:
     """Holds the API key and fetches endpoints as raw rows.
 
@@ -46,7 +68,7 @@ class KRXSession:
         self.timeout = timeout
 
     def __repr__(self) -> str:
-        # Never shows the API key, in whole or in part (Package Boundary Ch. 12).
+        # Never shows the API key, in whole or in part.
         return "KRXSession(...)"
 
     def fetch(self, endpoint: KRXEndpoint, **params: str) -> list[Row]:
@@ -65,8 +87,8 @@ class KRXSession:
         """Fetch an endpoint's keyless sample (fixed :data:`SAMPLE_DATE`).
 
         A classmethod: it builds its own session from the public sample key, so it
-        needs no configured ``KRX_API_KEY`` at all -- the way the tests exercise the
-        wire path. Hits the ``/svc/sample/apis`` twin, never a real service.
+        needs no configured ``KRX_API_KEY`` at all. Hits the ``/svc/sample/apis``
+        twin, never a real service.
         """
         session = cls(SAMPLE_KEY, timeout=timeout)
         return session._get(endpoint.sample_url, SAMPLE_KEY, {"basDd": SAMPLE_DATE})
@@ -78,7 +100,7 @@ class KRXSession:
             full_url, headers={_AUTH_HEADER: api_key.strip(), "User-Agent": _USER_AGENT}
         )
         try:
-            with urllib.request.urlopen(request, timeout=self.timeout) as response:
+            with _OPENER.open(request, timeout=self.timeout) as response:
                 raw = response.read()
         except urllib.error.HTTPError as err:
             with err:  # an HTTPError is an unclosed response; release its socket
@@ -108,10 +130,13 @@ def _rows_from_body(raw: bytes, url: str) -> list[Row]:
     sends an empty one for a no-data date).
     """
     try:
-        body: Any = json.loads(raw)
-    except (json.JSONDecodeError, UnicodeDecodeError) as err:
-        # A 200 whose body is not JSON / not UTF-8 (a proxy or maintenance HTML page)
-        # must surface through KRXError, not as a raw decode error.
+        # Decode as UTF-8 explicitly: json.loads(bytes) auto-detects UTF-16/32, which
+        # would let a non-UTF-8 body slip through the "must be UTF-8 JSON" contract.
+        body: Any = json.loads(raw.decode("utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError, RecursionError) as err:
+        # A 200 whose body is not JSON / not UTF-8 (a proxy or maintenance HTML page), or
+        # is nested deep enough to blow the parser's recursion limit, must surface through
+        # KRXError, not as a raw decode/recursion error.
         raise KRXNetworkError(f"non-JSON response from KRX for {url}") from err
     if not isinstance(body, dict):
         raise KRXNetworkError(f"unexpected KRX response for {url}: {body!r}")
@@ -122,7 +147,7 @@ def _rows_from_body(raw: bytes, url: str) -> list[Row]:
 
     blocks = [
         value for key, value in body.items()
-        if key.startswith("OutBlock") and isinstance(value, list)
+        if key.startswith("OutBlock_") and isinstance(value, list)
     ]
     if len(blocks) != 1:
         # Success must carry exactly one OutBlock_* array; zero or several is a shape

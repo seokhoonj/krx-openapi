@@ -67,6 +67,23 @@ def test_non_object_json_raises(tmp_path, monkeypatch):
         resolve_api_key(None)
 
 
+def test_present_but_invalid_utf8_raises(tmp_path, monkeypatch):
+    path = _point_config_at(tmp_path, monkeypatch)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(b"\xff\xfe not utf-8")  # present but undecodable
+    with pytest.raises(KRXConfigError):
+        resolve_api_key(None)
+
+
+def test_key_with_control_char_raises_and_never_echoes_the_key():
+    # A stray newline inside the key would make an invalid HTTP header, and urllib's
+    # ValueError would echo the whole value. Reject it as config, without echoing it.
+    with pytest.raises(KRXConfigError) as exc:
+        resolve_api_key("prefix\nSECRETTAIL")
+    assert "SECRETTAIL" not in str(exc.value)
+    assert "prefix" not in str(exc.value)
+
+
 def test_present_but_unreadable_raises(tmp_path, monkeypatch):
     path = _point_config_at(tmp_path, monkeypatch)
     _write(path, json.dumps({"KRX_API_KEY": "x"}))

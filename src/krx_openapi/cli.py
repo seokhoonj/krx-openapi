@@ -1,29 +1,26 @@
-"""Command-line shell over ``KRX`` -- the same names as the Python client.
+"""Command-line shell over ``KRX`` -- three commands, one per plugin skill.
 
-The CLI mirrors the accessor tree one-to-one, so a call reads the same on both
-sides: ``krx.index.kospi("20200414")`` is ``krx index kospi 20200414``. No api_ids
-to memorize -- the readable ``group name`` pair selects the service. ``list`` and
-``fields`` browse the bundled catalog offline (no key); ``get`` is the escape hatch
-that still takes a raw ``category`` + ``api_id``.
+``list`` and ``fields`` browse the bundled catalog offline (no key); ``fetch`` runs
+one service for a date. Each takes the readable ``group name`` pair the Python client
+uses -- ``krx fetch index kospi 20200414`` fetches what
+``krx.index.kospi("20200414")`` returns. No api_ids to memorize.
 
-    $ krx index kospi 20200414
-    $ krx stock daily 20200414 --market KOSDAQ
-    $ krx bond treasury 20200414 --json
     $ krx list                      # every group and its methods (offline)
+    $ krx list stock                # just one group (offline)
     $ krx fields index kospi         # the columns that service returns (offline)
-    $ krx get idx krx_dd_trd --date 20200414   # any service, by raw ids
+    $ krx fetch index kospi 20200414
+    $ krx fetch stock daily 20200414 --market KOSDAQ
 """
 
 from __future__ import annotations
 
 import argparse
-import inspect
 import json
 import sys
 from collections.abc import Callable, Sequence
 
 from . import __version__, catalog
-from .client import KRX
+from .client import KRX, _accepts_market
 from .errors import KRXError
 from .types import Row
 
@@ -39,7 +36,8 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     A failure -- a missing/rejected key, a vendor error, or a transport problem -- is
     printed as a one-line ``krx: <message>`` to stderr and returns 1. A usage error
-    (a bad flag or subcommand, via argparse) returns 2.
+    caught here (an unknown service, or ``--market`` on a service without it) returns
+    2; argparse's own usage errors (a bad flag or subcommand) raise ``SystemExit(2)``.
     """
     args = _make_parser().parse_args(argv)
     run: Callable[[argparse.Namespace], int] = args.run
@@ -56,16 +54,7 @@ def _make_parser() -> argparse.ArgumentParser:
     parser.add_argument("--version", action="version", version=f"{_PROG} {__version__}")
     commands = parser.add_subparsers(required=True)
 
-    # One subcommand per accessor group: `krx <group> <name> <date>`.
-    for group in catalog.groups():
-        fetch = commands.add_parser(group, help=f"{group} services")
-        fetch.add_argument("name", choices=catalog.methods(group), help="service method")
-        fetch.add_argument("date", metavar="YYYYMMDD", help="trade date (basDd)")
-        fetch.add_argument("--market", default=None, metavar="M",
-                           help="KOSPI/KOSDAQ/KONEX (only stock and stock-derivative services)")
-        fetch.add_argument("--json", action="store_true", help="emit JSON instead of text")
-        fetch.set_defaults(run=_run_fetch, group=group)
-
+    # Registered list -> fields -> fetch: discovery first, then the key-gated fetch.
     list_cmd = commands.add_parser("list", help="list services (offline)")
     list_cmd.add_argument("group", nargs="?", choices=catalog.groups(), default=None,
                           help="only this group; omit for all")
@@ -74,24 +63,47 @@ def _make_parser() -> argparse.ArgumentParser:
 
     fields_cmd = commands.add_parser("fields", help="a service's field schema (offline)")
     fields_cmd.add_argument("group", choices=catalog.groups(), help="accessor group")
-    fields_cmd.add_argument("name", help="service method (e.g. kospi)")
+    fields_cmd.add_argument("method", help="service method (e.g. kospi)")
     fields_cmd.add_argument("--json", action="store_true", help="emit JSON instead of text")
     fields_cmd.set_defaults(run=_run_fields)
+
+    # `krx fetch <group> <method> <date>` -- the one data command, mirroring the `fetch`
+    # skill. group is validated here; the method depends on the group, which argparse
+    # choices cannot express, so _run_fetch checks it against `catalog.methods(group)`.
+    fetch_cmd = commands.add_parser("fetch", help="fetch one day of a service")
+    fetch_cmd.add_argument("group", choices=catalog.groups(), help="accessor group")
+    fetch_cmd.add_argument("method", help="service method, e.g. kospi (see `krx list <group>`)")
+    fetch_cmd.add_argument("date", metavar="YYYYMMDD", help="trade date (basDd)")
+    fetch_cmd.add_argument("--market", default=None, metavar="M",
+                           help="KOSPI/KOSDAQ/KONEX for stock; KOSPI/KOSDAQ for stock-derivatives")
+    fetch_cmd.add_argument("--json", action="store_true", help="emit JSON instead of text")
+    fetch_cmd.set_defaults(run=_run_fetch)
 
     return parser
 
 
 def _run_fetch(args: argparse.Namespace) -> int:
-    method = getattr(getattr(KRX(), args.group), args.name)
-    kwargs = {}
-    if args.market is not None:
-        if "market" in inspect.signature(method).parameters:
-            kwargs["market"] = args.market
-        else:
-            print(f"{_ERROR_PREFIX}{args.group} {args.name} takes no --market",
-                  file=sys.stderr)
-            return 2
-    _emit(method(args.date, **kwargs), args.json)
+    # Both usage checks run before KRX(), so a misused command is a usage error (exit 2)
+    # without needing an API key. The valid methods, and whether one takes --market,
+    # depend on the group -- more than argparse choices can express.
+    if args.method not in catalog.methods(args.group):
+        print(f"{_ERROR_PREFIX}unknown service {args.group} {args.method!r} "
+              f"(try `{_PROG} list {args.group}`)", file=sys.stderr)
+        return 2
+    if args.market is not None and not _accepts_market(args.group, args.method):
+        print(f"{_ERROR_PREFIX}fetch {args.group} {args.method} takes no --market",
+              file=sys.stderr)
+        return 2
+    method = getattr(getattr(KRX(), args.group), args.method)
+    kwargs = {"market": args.market} if args.market is not None else {}
+    try:
+        rows = method(args.date, **kwargs)
+    except ValueError as err:
+        # An unknown --market VALUE: the client raises ValueError (a caller mistake),
+        # a usage error (exit 2), not a traceback and not a transport failure.
+        print(f"{_ERROR_PREFIX}{err}", file=sys.stderr)
+        return 2
+    _emit(rows, args.json)
     return 0
 
 
@@ -110,9 +122,9 @@ def _run_list(args: argparse.Namespace) -> int:
 
 def _run_fields(args: argparse.Namespace) -> int:
     try:
-        fields = catalog.fields(args.group, args.name)
+        fields = catalog.fields(args.group, args.method)
     except KeyError:
-        print(f"{_ERROR_PREFIX}unknown service {args.group} {args.name!r} "
+        print(f"{_ERROR_PREFIX}unknown service {args.group} {args.method!r} "
               f"(try `{_PROG} list {args.group}`)", file=sys.stderr)
         return 2
     if args.json:

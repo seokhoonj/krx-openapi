@@ -34,6 +34,12 @@ def resolve_api_key(explicit: str | None) -> str:
             f"no KRX API key: pass api_key=, set the {_ENV_VAR} environment "
             f"variable, or put it in {credentials_path()}"
         )
+    if any(ord(ch) < 0x20 or ord(ch) == 0x7f for ch in key):
+        # A control character (a stray newline/tab, often from a copy-paste) would make
+        # an invalid HTTP header: urllib raises ValueError echoing the whole value -- the
+        # key. Reject it as a config error, before it becomes a request, and never echo it.
+        raise KRXConfigError(
+            "the KRX API key contains a control character (a stray newline or tab?)")
     return key
 
 
@@ -49,6 +55,11 @@ def _key_from_file() -> str:
         text = path.read_text(encoding="utf-8")
     except FileNotFoundError:
         return ""
+    except UnicodeDecodeError as err:
+        # A present file that is not UTF-8 is "unreadable" in the same sense as an
+        # OSError: the caller wrote it meaning it to be used, so surface it, not a
+        # raw decode error. (UnicodeDecodeError is a ValueError, not an OSError.)
+        raise KRXConfigError(f"{path} is not valid UTF-8: {err}") from err
     except OSError as err:
         raise KRXConfigError(f"could not read {path}: {err}") from err
 

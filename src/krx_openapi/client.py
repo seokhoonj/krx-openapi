@@ -5,11 +5,12 @@ Built from an API key (constructor, ``KRX_API_KEY`` env, or config file), it hol
 ``stock``, ``etp``, ``bond``, ``derivatives``, ``commodity``, ``esg`` -- whose methods
 mirror the KRX service list one-to-one. Each method takes ``date`` (the
 ``YYYYMMDD`` trade date) and returns ``list[dict[str, str]]``, the vendor's rows with
-their own field names. :meth:`KRX.get` is the escape hatch for any service by
-``category`` + ``api_id``.
+their own field names.
 """
 
 from __future__ import annotations
+
+import inspect
 
 from ._endpoint import ENDPOINTS
 from .session import KRXSession
@@ -180,6 +181,30 @@ class _Esg(_Surface):
         return self._fetch("esg_etp_info", basDd=date)
 
 
+# The category sub-surfaces by accessor name. One source of truth: KRX builds one of
+# each here, and _accepts_market introspects the same classes -- so the CLI can answer
+# "does this method take --market?" offline (no key) without duplicating the fact.
+_SURFACES: dict[str, type[_Surface]] = {
+    "index": _Index,              # 지수 (idx)
+    "stock": _Stock,              # 주식 (sto)
+    "etp": _Etp,                  # 증권상품 (etp)
+    "bond": _Bond,                # 채권 (bon)
+    "derivatives": _Derivatives,  # 파생상품 (drv)
+    "commodity": _Commodity,      # 일반상품 (gen)
+    "esg": _Esg,                  # ESG (esg)
+}
+
+
+def _accepts_market(group: str, method: str) -> bool:
+    """Whether an accessor ``group.method`` takes a ``market`` argument.
+
+    Read from the accessor method's own signature, so it cannot drift from the
+    method definition. Lets the CLI reject a stray ``--market`` as a usage error
+    before it constructs a client (which would need an API key)."""
+    func = getattr(_SURFACES[group], method)
+    return "market" in inspect.signature(func).parameters
+
+
 class KRX:
     """Client for the KRX Open API. Groups services as sub-surfaces.
 
@@ -196,15 +221,18 @@ class KRX:
     ``polars.DataFrame(rows)``.
     """
 
+    index: _Index
+    stock: _Stock
+    etp: _Etp
+    bond: _Bond
+    derivatives: _Derivatives
+    commodity: _Commodity
+    esg: _Esg
+
     def __init__(self, api_key: str | None = None, *, timeout: float = 60.0) -> None:
         self._session = KRXSession(api_key, timeout=timeout)
-        self.index = _Index(self._session)          # 지수 (idx)
-        self.stock = _Stock(self._session)          # 주식 (sto)
-        self.etp = _Etp(self._session)              # 증권상품 (etp)
-        self.bond = _Bond(self._session)            # 채권 (bon)
-        self.derivatives = _Derivatives(self._session)   # 파생상품 (drv)
-        self.commodity = _Commodity(self._session)  # 일반상품 (gen)
-        self.esg = _Esg(self._session)              # ESG (esg)
+        for name, surface_cls in _SURFACES.items():
+            setattr(self, name, surface_cls(self._session))
 
     def __repr__(self) -> str:
         return f"KRX({self._session!r})"

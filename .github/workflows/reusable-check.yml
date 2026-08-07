@@ -57,3 +57,27 @@ jobs:
           import krx_openapi
           print('krx_openapi', krx_openapi.__version__, 'imports with no third-party packages')
           "
+          # The console script runs, and its top-level --version prints (not shoved
+          # into a required subcommand).
+          /tmp/bare/bin/krx --version
+
+      - name: Confirm a user's type checker can see the hints
+        # Every hint in this package is invisible to a user unless py.typed ships
+        # alongside it (PEP 561), and the source cannot answer whether it did:
+        # src/krx_openapi/py.typed can sit in git while the built wheel omits it. So
+        # ask it the way a user does -- install the built package into a clean
+        # environment and run their checker over their code.
+        run: |
+          uv venv /tmp/typed --python ${{ matrix.python-version }}
+          uv pip install --python /tmp/typed/bin/python . mypy
+          cat > /tmp/user_code.py <<'PY'
+          from krx_openapi import KRX
+
+          # market is Literal["KOSPI","KOSDAQ","KONEX"]; an int is none of them, so a
+          # checker that can see the shipped hints must reject it. If py.typed is
+          # missing from the wheel, mypy skips krx_openapi and emits no such error.
+          KRX(api_key="k").stock.daily("20200414", market=123)
+          PY
+          /tmp/typed/bin/mypy /tmp/user_code.py > /tmp/mypy_out 2>&1 || true
+          cat /tmp/mypy_out
+          grep -q 'incompatible type' /tmp/mypy_out
