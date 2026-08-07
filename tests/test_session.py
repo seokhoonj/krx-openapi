@@ -96,13 +96,17 @@ def test_non_object_json_raises_network_error():
         _rows_from_body(b"[1, 2, 3]", "http://x")
 
 
-def test_deeply_nested_json_raises_network_error():
-    # A body nested deep enough to blow json's recursion limit must surface as our error,
-    # not a raw RecursionError.
-    depth = 100_000
-    raw = ("[" * depth + "]" * depth).encode("utf-8")
+def test_recursion_error_becomes_network_error(monkeypatch):
+    # A body nested deep enough to exhaust the JSON parser must surface as our error,
+    # not a raw RecursionError. Force it by making json raise: feeding a real deep
+    # string would, on some CPython builds, overflow the C stack and crash the
+    # interpreter instead of raising -- which would take the test process down with it.
+    def boom(*args, **kwargs):
+        raise RecursionError("maximum recursion depth exceeded")
+
+    monkeypatch.setattr("krx_openapi.session.json.loads", boom)
     with pytest.raises(KRXNetworkError):
-        _rows_from_body(raw, "http://x")
+        _rows_from_body(b'{"OutBlock_1": []}', "http://x")
 
 
 def test_non_dict_row_raises():

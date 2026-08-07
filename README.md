@@ -37,8 +37,8 @@ pip install krx-openapi
 ```python
 from krx_openapi import KRX
 
-krx = KRX()                                     # 저장해둔 키를 자동으로 찾습니다 (config 파일·환경변수)
-# krx = KRX(api_key="발급받은-키")              # 또는 키를 코드에 직접 넣기
+krx = KRX(api_key="your-key")                   # 또는 KRX() — 저장해둔 키(env/config)를 자동으로 찾음
+
 rows = krx.index.kospi("20200414")              # KOSPI 시리즈 지수, 하루치
 
 krx.stock.daily("20200414", market="KOSPI")     # KOSPI 전종목 일별매매정보

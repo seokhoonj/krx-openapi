@@ -38,8 +38,8 @@ PowerShell: `setx KRX_API_KEY "..."`.
 ```python
 from krx_openapi import KRX
 
-krx = KRX()                                     # finds the stored key (config file, env var)
-# krx = KRX(api_key="your-key")                 # or pass the key in code
+krx = KRX(api_key="your-key")                   # or KRX() to find a stored key (env / config file)
+
 rows = krx.index.kospi("20200414")              # KOSPI index series, one day
 
 krx.stock.daily("20200414", market="KOSPI")     # all KOSPI stocks, one day
