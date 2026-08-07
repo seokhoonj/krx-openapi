@@ -1,0 +1,61 @@
+name: publish
+
+# Publish to PyPI on a GitHub Release, via PyPI Trusted Publishing (OIDC): no API
+# token or password is stored anywhere -- GitHub mints a short-lived identity token
+# that PyPI verifies against the publisher registered for this repo (owner seokhoonj
+# / repo krx-openapi / this workflow / environment "pypi").
+#
+# Three jobs. `gate` runs the same reusable check that check.yml runs, on the
+# release commit, so a red build (a lint/type error, a broken test, a lost py.typed
+# or console script) cannot reach an upload. `build` builds the sdist and wheel and
+# hands them to `publish` as an artifact. `publish` -- the only job holding the OIDC
+# token -- downloads that artifact and uploads it, and checks out no source, so the
+# privileged step runs the least code.
+
+on:
+  release:
+    types: [published]
+
+# Workflow-level floor: any job without its own `permissions:` block still gets a
+# read-only token, so a job added later cannot silently inherit a write-capable
+# default. The build and publish jobs narrow it further below.
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    uses: ./.github/workflows/reusable-check.yml
+
+  build:
+    needs: gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+      - name: Build sdist and wheel, then check the metadata
+        run: |
+          uv build
+          uvx twine check dist/*
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: pypi
+    permissions:
+      id-token: write   # OIDC; this is what replaces a stored token
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@ba38be9e461d3875417946c167d0b5f3d385a247 # v1.14.1
