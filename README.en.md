@@ -149,6 +149,8 @@ krx fetch bond treasury 20200414
 
 ### 5.1 Claude Code
 
+In the Claude Code chat, add the marketplace and install:
+
 ```
 /plugin marketplace add seokhoonj/krx-openapi
 /plugin install krx@krx-openapi
@@ -158,6 +160,8 @@ Then ask in plain language ("get all KOSPI stock prices", "what KRX services are
 or call a skill directly — `/krx:list`, `/krx:fields index kospi`, `/krx:fetch index kospi 20200414`.
 
 ### 5.2 Codex
+
+In your terminal, add the marketplace and install:
 
 ```
 codex plugin marketplace add seokhoonj/krx-openapi

@@ -147,6 +147,8 @@ krx fetch bond treasury 20200414
 
 ### 5.1 Claude Code
 
+Claude Code 채팅창에서 마켓플레이스를 추가하고 설치합니다:
+
 ```
 /plugin marketplace add seokhoonj/krx-openapi
 /plugin install krx@krx-openapi
@@ -156,6 +158,8 @@ krx fetch bond treasury 20200414
 직접 부르세요 — `/krx:list`, `/krx:fields index kospi`, `/krx:fetch index kospi 20200414`.
 
 ### 5.2 Codex
+
+터미널에서 마켓플레이스를 추가하고 설치합니다:
 
 ```
 codex plugin marketplace add seokhoonj/krx-openapi
