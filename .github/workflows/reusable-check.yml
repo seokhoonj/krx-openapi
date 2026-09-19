@@ -1,6 +1,6 @@
 name: reusable check
 
-# The full check -- tests, lint, types, and the zero-dependency assertion -- factored
+# The full check -- tests, lint, types, and the runtime-dependency assertion -- factored
 # into one reusable job so both `check.yml` (on push / PR) and any release gate run
 # the *identical* thing.
 
@@ -42,20 +42,25 @@ jobs:
       - name: Types
         run: .venv/bin/mypy
 
-      - name: Confirm the package still has no runtime dependencies
-        # The zero-dependency claim is in the README and pyproject; a claim nothing
-        # checks quietly stops being true. Installed into a bare environment, the
-        # package must import with nothing else present.
+      - name: Confirm the only runtime dependency is credbox
+        # The transport is dependency-free (urllib) and the sole runtime dependency is
+        # credbox, the credential store; documented in the pyproject comment. A claim
+        # nothing checks quietly stops being true, so a stray extra runtime dependency
+        # creeping into `dependencies` is caught here, not in a user's env.
         run: |
           uv venv /tmp/bare --python ${{ matrix.python-version }}
           uv pip install --python /tmp/bare/bin/python .
           /tmp/bare/bin/python -c "
+          import re
           import importlib.metadata as md
           requires = md.requires('krx-openapi') or []
           runtime = [r for r in requires if 'extra ==' not in r]
-          assert not runtime, f'runtime dependencies appeared: {runtime}'
+          # Each requirement's bare name (before any version/marker/extra), PEP 503
+          # normalized; the runtime set must be exactly credbox.
+          names = sorted(re.split(r'[<>=!~;\[\s]', r, maxsplit=1)[0].replace('_', '-').lower() for r in runtime)
+          assert names == ['credbox'], f'unexpected runtime dependencies: {runtime}'
           import krx_openapi
-          print('krx_openapi', krx_openapi.__version__, 'imports with no third-party packages')
+          print('krx_openapi', krx_openapi.__version__, 'imports with only credbox present')
           "
           # The console script runs, and its top-level --version prints (not shoved
           # into a required subcommand).

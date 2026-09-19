@@ -7,7 +7,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "krx-openapi"
-version = "0.1.0"
+version = "0.2.0"
 description = "Read the Korea Exchange (KRX) Open API: indices, stocks, ETP, bonds, derivatives, commodities, ESG."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -27,12 +27,15 @@ classifiers = [
     "Programming Language :: Python :: 3.14",
     "Topic :: Office/Business :: Financial",
 ]
-# No runtime dependencies on purpose: urllib and json from the standard library
-# carry the whole client. A data client that never breaks on a third party's release
-# is worth more than any convenience they would add. Rows come back as ``list[dict]``,
-# which ``pandas.DataFrame`` / ``polars.DataFrame`` accept directly, so no DataFrame
-# library is bundled or wrapped.
-dependencies = []
+# The transport is dependency-free on purpose: urllib and json from the standard library
+# carry the whole client, and a data client that never breaks on a transport library's
+# release is worth more than any convenience one would add. Rows come back as
+# ``list[dict]``, which ``pandas.DataFrame`` / ``polars.DataFrame`` accept directly, so no
+# DataFrame library is bundled. The one runtime dependency is credbox, the shared
+# credential store the API key is read from.
+dependencies = [
+    "credbox>=0.4",
+]
 
 [project.optional-dependencies]
 dev = [

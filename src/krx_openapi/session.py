@@ -2,8 +2,8 @@
 
 The session holds the API key and turns an endpoint + params into rows: a
 ``list[dict[str, str]]``, the vendor's ``OutBlock_*`` array passed through with its
-own field names. No third-party HTTP client -- ``urllib`` carries it, so the package
-has zero runtime dependencies.
+own field names. No third-party HTTP client -- ``urllib`` carries the transport; the
+credential store (credbox) the key is read from is the package's only runtime dependency.
 
 KRX answers with HTTP 200 even on failure and marks the failure with a non-empty
 ``respCode`` (+ ``respMsg``) in the JSON body; :meth:`fetch` applies that contract,
