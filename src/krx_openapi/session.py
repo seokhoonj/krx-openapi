@@ -21,7 +21,7 @@ from typing import Any
 
 from ._config import resolve_api_key
 from ._endpoint import SAMPLE_DATE, SAMPLE_KEY, KRXEndpoint
-from .errors import KRXNetworkError, KRXRateLimitError, _error_for
+from .errors import KRXError, KRXNetworkError, KRXRateLimitError, _error_for
 from .types import Row
 
 _AUTH_HEADER = "AUTH_KEY"
@@ -99,27 +99,40 @@ class KRXSession:
         request = urllib.request.Request(
             full_url, headers={_AUTH_HEADER: api_key.strip(), "User-Agent": _USER_AGENT}
         )
+        # The key rides in the AUTH_KEY header, not the URL, so `url` is safe to name.
+        # Still, every failure is BUILT inside the except and RAISED after it
+        # (`from None`), so no transport exception is chained -- a reflecting server that
+        # echoed the request header into a response body could otherwise reach the key
+        # through, e.g., an IncompleteRead's partial body on the cause chain.
+        failure: KRXError
         try:
             with _OPENER.open(request, timeout=self.timeout) as response:
                 raw = response.read()
         except urllib.error.HTTPError as err:
             with err:  # an HTTPError is an unclosed response; release its socket
                 if err.code == _RATE_LIMIT_STATUS:
-                    raise KRXRateLimitError(
+                    failure = KRXRateLimitError(
                         "KRX daily call quota exceeded (10,000/key/day); resets at "
-                        "midnight") from err
-                hint = ""
-                if err.code == _FORBIDDEN_STATUS:
-                    hint = (" -- check the key, that the URL is https and /svc/apis "
-                            "(not /svc/sample/apis with a real key)")
-                raise KRXNetworkError(f"HTTP {err.code} from KRX for {url}{hint}") from err
+                        "midnight")
+                else:
+                    hint = ""
+                    if err.code == _FORBIDDEN_STATUS:
+                        hint = (" -- check the key, that the URL is https and /svc/apis "
+                                "(not /svc/sample/apis with a real key)")
+                    failure = KRXNetworkError(f"HTTP {err.code} from KRX for {url}{hint}")
         except urllib.error.URLError as err:
-            raise KRXNetworkError(f"request to KRX failed: {err.reason}") from err
+            # A transport reason is external text; keep only its type, then detach below.
+            failure = KRXNetworkError(
+                f"request to KRX failed for {url}: {type(err.reason).__name__}")
         except (http.client.HTTPException, OSError) as err:
             # A failure during response.read() (IncompleteRead, a socket timeout or
-            # reset) is not an HTTPError/URLError; surface it through KRXError too.
-            raise KRXNetworkError(f"KRX response read failed for {url}: {err}") from err
-        return _rows_from_body(raw, url)
+            # reset) is not an HTTPError/URLError; surface it through KRXError too. Name
+            # only the exception type -- str(err) can hold partially-read body bytes.
+            failure = KRXNetworkError(
+                f"KRX response read failed for {url}: {type(err).__name__}")
+        else:
+            return _rows_from_body(raw, url)
+        raise failure from None
 
 
 def _rows_from_body(raw: bytes, url: str) -> list[Row]:

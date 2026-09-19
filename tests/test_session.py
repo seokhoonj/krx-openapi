@@ -199,6 +199,23 @@ def test_get_read_failure_raises_network(monkeypatch):
         KRXSession(api_key="k").fetch(ENDPOINTS["kospi_dd_trd"], basDd="20200414")
 
 
+def test_read_failure_echoing_the_key_never_leaks_it(monkeypatch):
+    # A reflecting server could echo the AUTH_KEY header into the partial body of an
+    # interrupted read; the read-phase error must not surface it or chain the raw
+    # exception (whose partial body would carry it on the cause chain).
+    key = "SECRETKEY123"
+
+    class _EchoingRead(_FakeResponse):
+        def read(self) -> bytes:
+            raise http.client.IncompleteRead(f"partial Auth_key={key}".encode())
+
+    _patch_opener(monkeypatch, lambda request, timeout=None: _EchoingRead(b""))
+    with pytest.raises(KRXNetworkError) as exc:
+        KRXSession(api_key=key).fetch(ENDPOINTS["kospi_dd_trd"], basDd="20200414")
+    assert key not in str(exc.value)
+    assert exc.value.__context__ is None and exc.value.__cause__ is None
+
+
 # --- redirects must never carry the key -------------------------------------
 
 def test_no_redirect_handler_refuses_and_never_follows():

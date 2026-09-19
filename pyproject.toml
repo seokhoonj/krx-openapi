@@ -7,7 +7,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "krx-openapi"
-version = "0.2.0"
+version = "0.2.1"
 description = "Read the Korea Exchange (KRX) Open API: indices, stocks, ETP, bonds, derivatives, commodities, ESG."
 readme = "README.md"
 requires-python = ">=3.11"
