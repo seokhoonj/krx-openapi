@@ -31,69 +31,69 @@ def _body(payload):
 def test_extracts_the_outblock_array():
     rows = _rows_from_body(
         _body({"OutBlock_1": [{"BAS_DD": "20200414"}, {"BAS_DD": "20200414"}]}),
-        "http://x")
+        "http://x", "")
     assert rows == [{"BAS_DD": "20200414"}, {"BAS_DD": "20200414"}]
 
 
 def test_empty_outblock_is_empty_list():
     # a no-data date: KRX still returns the OutBlock, just empty
-    assert _rows_from_body(_body({"OutBlock_1": []}), "http://x") == []
+    assert _rows_from_body(_body({"OutBlock_1": []}), "http://x", "") == []
 
 
 def test_no_outblock_array_raises():
     with pytest.raises(KRXNetworkError):
-        _rows_from_body(_body({"other": "1"}), "http://x")
+        _rows_from_body(_body({"other": "1"}), "http://x", "")
 
 
 def test_multiple_outblock_arrays_raise():
     with pytest.raises(KRXNetworkError):
-        _rows_from_body(_body({"OutBlock_1": [], "OutBlock_2": []}), "http://x")
+        _rows_from_body(_body({"OutBlock_1": [], "OutBlock_2": []}), "http://x", "")
 
 
 def test_outblock_prefix_requires_the_underscore():
     # The block key must be OutBlock_<n>. A bare "OutBlock" is not a data array, so a
     # body carrying only that is no recognized block -> raises.
     with pytest.raises(KRXNetworkError):
-        _rows_from_body(_body({"OutBlock": []}), "http://x")
+        _rows_from_body(_body({"OutBlock": []}), "http://x", "")
     # A near-prefix like "OutBlockMeta" must be ignored, not mistaken for a second data
     # block: with the real OutBlock_1 present, exactly one block is found and returned.
     # (Under the looser startswith("OutBlock") this would be two blocks and would raise,
     # so this pins the underscore.)
-    rows = _rows_from_body(_body({"OutBlockMeta": [], "OutBlock_1": [{"a": "1"}]}), "http://x")
+    rows = _rows_from_body(_body({"OutBlockMeta": [], "OutBlock_1": [{"a": "1"}]}), "http://x", "")
     assert rows == [{"a": "1"}]
 
 
 def test_respcode_401_raises_auth_error():
     with pytest.raises(KRXAuthError):
-        _rows_from_body(_body({"respCode": "401", "respMsg": "not applied"}), "http://x")
+        _rows_from_body(_body({"respCode": "401", "respMsg": "not applied"}), "http://x", "")
 
 
 def test_respcode_other_raises_response_error():
     with pytest.raises(KRXResponseError):
-        _rows_from_body(_body({"respCode": "500", "respMsg": "boom"}), "http://x")
+        _rows_from_body(_body({"respCode": "500", "respMsg": "boom"}), "http://x", "")
 
 
 def test_non_json_raises_network_error():
     with pytest.raises(KRXNetworkError):
-        _rows_from_body(b"<html>maintenance</html>", "http://x")
+        _rows_from_body(b"<html>maintenance</html>", "http://x", "")
 
 
 def test_invalid_utf8_raises_network_error():
     # json.loads on non-UTF-8 bytes raises UnicodeDecodeError, not JSONDecodeError
     with pytest.raises(KRXNetworkError):
-        _rows_from_body(b"\xff\xfe not utf-8", "http://x")
+        _rows_from_body(b"\xff\xfe not utf-8", "http://x", "")
 
 
 def test_valid_utf16_json_raises_network_error():
     # Well-formed JSON, but UTF-16: json.loads(bytes) would auto-detect and accept it;
     # the contract is UTF-8 only, so decoding explicitly must reject it.
     with pytest.raises(KRXNetworkError):
-        _rows_from_body('{"OutBlock_1": []}'.encode("utf-16"), "http://x")
+        _rows_from_body('{"OutBlock_1": []}'.encode("utf-16"), "http://x", "")
 
 
 def test_non_object_json_raises_network_error():
     with pytest.raises(KRXNetworkError):
-        _rows_from_body(b"[1, 2, 3]", "http://x")
+        _rows_from_body(b"[1, 2, 3]", "http://x", "")
 
 
 def test_recursion_error_becomes_network_error(monkeypatch):
@@ -106,12 +106,12 @@ def test_recursion_error_becomes_network_error(monkeypatch):
 
     monkeypatch.setattr("krx_openapi.session.json.loads", boom)
     with pytest.raises(KRXNetworkError):
-        _rows_from_body(b'{"OutBlock_1": []}', "http://x")
+        _rows_from_body(b'{"OutBlock_1": []}', "http://x", "")
 
 
 def test_non_dict_row_raises():
     with pytest.raises(KRXNetworkError):
-        _rows_from_body(_body({"OutBlock_1": [{"a": "1"}, "junk"]}), "http://x")
+        _rows_from_body(_body({"OutBlock_1": [{"a": "1"}, "junk"]}), "http://x", "")
 
 
 # --- _get (offline opener fake) ---------------------------------------------
@@ -216,6 +216,51 @@ def test_read_failure_echoing_the_key_never_leaks_it(monkeypatch):
     assert exc.value.__context__ is None and exc.value.__cause__ is None
 
 
+# --- parse-path secret safety (the key must not ride the decode-error chain) --
+
+def _assert_no_key(exc, key):
+    seen, pending = set(), [exc]
+    while pending:
+        current = pending.pop()
+        if current is None or id(current) in seen:
+            continue
+        seen.add(id(current))
+        blob = str(current) + repr(current) + repr(current.args)
+        assert key not in blob
+        pending.extend([current.__cause__, current.__context__])
+
+
+def test_non_utf8_body_echoing_the_key_never_leaks_it():
+    # A reflecting server could echo the AUTH_KEY header into a non-UTF-8 200 body; the
+    # decode error (whose .object is the whole body) must not ride the raised error's
+    # chain. This is the sibling of the read-phase test, for the body-parse path.
+    key = "SECRETKEY123"
+    body = ("bad " + key).encode() + b"\xff"   # invalid UTF-8 tail, echoes the key
+    with pytest.raises(KRXNetworkError) as exc:
+        _rows_from_body(body, "http://x", key)
+    assert exc.value.__cause__ is None and exc.value.__context__ is None
+    _assert_no_key(exc.value, key)
+
+
+def test_non_dict_body_echoing_the_key_never_leaks_it():
+    # A non-dict JSON body is server-authored; the "unexpected response" error must name
+    # only the shape, never the body content (which could echo the header key).
+    key = "SECRETKEY123"
+    body = _body([f"{key} reflected"])          # a JSON list echoing the key
+    with pytest.raises(KRXNetworkError) as exc:
+        _rows_from_body(body, "http://x", key)
+    _assert_no_key(exc.value, key)
+
+
+def test_vendor_error_message_echoing_the_key_never_leaks_it():
+    # respCode/respMsg are server-authored; a message echoing the header key is redacted.
+    key = "SECRETKEY123"
+    body = _body({"respCode": "99", "respMsg": f"rejected {key}"})
+    with pytest.raises(KRXResponseError) as exc:
+        _rows_from_body(body, "http://x", key)
+    _assert_no_key(exc.value, key)
+
+
 # --- redirects must never carry the key -------------------------------------
 
 def test_no_redirect_handler_refuses_and_never_follows():
@@ -271,4 +316,6 @@ def test_error_message_never_shows_the_key(monkeypatch):
     with pytest.raises(KRXNetworkError) as exc:
         KRXSession(api_key="SECRETKEY123").fetch(ENDPOINTS["kospi_dd_trd"], basDd="20200414")
     assert "SECRETKEY123" not in str(exc.value)
-    assert "SECRETKEY123" not in str(exc.value.__cause__)
+    # The HTTPError branch also detaches: the key-bearing transport error must not ride
+    # the chain (str(__cause__) alone would pass even if it were chained, so assert None).
+    assert exc.value.__cause__ is None and exc.value.__context__ is None

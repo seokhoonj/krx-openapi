@@ -36,7 +36,9 @@ class KRXNetworkError(KRXError):
 
     A timeout, DNS failure, connection reset, an interrupted read, a non-success HTTP
     status, or a 200 whose body is not JSON (a proxy/maintenance page). The underlying
-    exception is chained as ``__cause__``.
+    transport/decode exception is deliberately NOT chained: it can hold the request URL
+    or the response body, so surfacing it on ``__cause__``/``__context__`` would expose
+    them to a logger that walks the chain.
     """
 
 

@@ -131,32 +131,60 @@ class KRXSession:
             failure = KRXNetworkError(
                 f"KRX response read failed for {url}: {type(err).__name__}")
         else:
-            return _rows_from_body(raw, url)
+            return _rows_from_body(raw, url, api_key)
         raise failure from None
 
 
-def _rows_from_body(raw: bytes, url: str) -> list[Row]:
+def _redact_key(text: str, api_key: str) -> str:
+    """Blank the API key out of server-authored text (a vendor message, or a body a
+    reflecting server echoed the ``AUTH_KEY`` header into).
+
+    krx carries the key in the request header, not the URL, so this is defense-in-depth:
+    a server that reflected the header into a response field would otherwise surface it in
+    an error message. Blank the raw and url-encoded forms of the value actually sent
+    (``api_key.strip()``). (An empty key would splice ``<key>`` between every character.)
+    """
+    key = api_key.strip()
+    if not key:
+        return text
+    return text.replace(key, "<key>").replace(urllib.parse.quote_plus(key), "<key>")
+
+
+def _rows_from_body(raw: bytes, url: str, api_key: str) -> list[Row]:
     """Apply the KRX status contract to a raw response body.
 
-    A pure function of the bytes: parses JSON, raises on a non-empty ``respCode`` or a
-    non-JSON body, and returns the single ``OutBlock_*`` array (``[]`` when the vendor
-    sends an empty one for a no-data date).
+    Parses JSON, raises on a non-empty ``respCode`` or a non-JSON body, and returns the
+    single ``OutBlock_*`` array (``[]`` when the vendor sends an empty one for a no-data
+    date). ``api_key`` is used only to redact it from an error message, in case a server
+    echoes the request header into the body.
     """
+    failure: KRXError | None = None
     try:
         # Decode as UTF-8 explicitly: json.loads(bytes) auto-detects UTF-16/32, which
         # would let a non-UTF-8 body slip through the "must be UTF-8 JSON" contract.
         body: Any = json.loads(raw.decode("utf-8"))
-    except (json.JSONDecodeError, UnicodeDecodeError, RecursionError) as err:
+    except (json.JSONDecodeError, UnicodeDecodeError, RecursionError):
         # A 200 whose body is not JSON / not UTF-8 (a proxy or maintenance HTML page), or
         # is nested deep enough to blow the parser's recursion limit, must surface through
-        # KRXError, not as a raw decode/recursion error.
-        raise KRXNetworkError(f"non-JSON response from KRX for {url}") from err
+        # KRXError. Built here but raised OUTSIDE the except (`from None` below): the decode
+        # error's .doc/.object is the whole body -- which a reflecting server could make
+        # echo the AUTH_KEY header -- so it must not ride __cause__/__context__.
+        failure = KRXNetworkError(f"non-JSON response from KRX for {url}")
+    if failure is not None:
+        raise failure from None
+
     if not isinstance(body, dict):
-        raise KRXNetworkError(f"unexpected KRX response for {url}: {body!r}")
+        # Name only the shape -- body is server-authored and could echo the header key.
+        raise KRXNetworkError(
+            f"unexpected KRX response for {url}: expected a JSON object, "
+            f"got {type(body).__name__}")
 
     code = body.get("respCode")
     if code:  # present only on failure
-        raise _error_for(str(code), str(body.get("respMsg", "")))
+        # respCode/respMsg are server-authored; redact in case they echo the header key.
+        raise _error_for(
+            _redact_key(str(code), api_key),
+            _redact_key(str(body.get("respMsg", "")), api_key))
 
     blocks = [
         value for key, value in body.items()
